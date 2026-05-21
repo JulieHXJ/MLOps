@@ -1,7 +1,47 @@
-<!--
-Copyright 2025 Arkadia Heilbronn gGmbH
-Licensed under the Apache License, Version 2.0. See LICENSE file.
--->
-# MLOps
+# Titanic Survival Prediction with Logistic Regression
 
-You explore core machine learning concepts by building regression models in Jupyter notebooks, using techniques like linear regression, random forests, and XGBoost. You implement classification workflows, refactor them into reusable Python functions, and track experiments with MLflow. A production-grade ML pipeline is orchestrated with Dagster, using LakeFS for data versioning and triggering automated runs on data changes. The pipeline is polished into a clean, reproducible project, with a final product prepared for clear and confident presentation.
+This project implements a Logistic Regression model to predict passenger survival in the Titanic dataset.
+
+The goal of the project is not only to train a model with `scikit-learn`, but also to understand the internal logic of Logistic Regression by implementing it manually with NumPy.
+
+## Workflow
+
+The project follows a basic machine learning workflow:
+
+1. Load and inspect the dataset
+2. Perform exploratory data analysis
+3. Select features and target
+4. Split the data into training and test sets
+5. Train a Logistic Regression model with `scikit-learn`
+6. Evaluate the model with classification metrics
+7. Implement Logistic Regression from scratch with NumPy
+8. Compare the custom implementation with the `scikit-learn` model
+
+## Model Evaluation
+
+The model is evaluated using:
+
+- accuracy
+- precision
+- recall
+- F1-score
+- confusion matrix
+- ROC AUC
+
+These metrics provide a more complete understanding of model performance than accuracy alone.
+
+## Manual Implementation
+
+The NumPy implementation includes:
+
+- feature standardization
+- sigmoid function
+- binary cross-entropy loss
+- gradient descent
+- prediction and accuracy functions
+- loss history tracking
+
+The Logistic Regression process can be summarized as:
+
+```text
+features -> linear score -> sigmoid probability -> class prediction
