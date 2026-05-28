@@ -1,19 +1,22 @@
 ## Bike Rental Dagster Pipeline
 
-This project implements a Dagster asset pipeline for transforming raw bike rental, weather, and holiday data into a model-ready hourly dataset.
+This project implements a Dagster asset pipeline for transforming raw bike rental, weather, and holiday data into a model-ready location-level hourly demand dataset.
+
+Each row in the final dataset represents the rental demand for one location during one specific hourly time window. The dataset is enriched with time-based features, hourly weather information, missing-data markers, and holiday information.
 
 ### Pipeline Overview
 
-The pipeline contains four raw data assets and four derived assets:
+The pipeline contains four raw data assets and five derived assets:
 
 - `registered_rentals`: loads registered bike rental event data.
 - `direct_pickups`: loads direct pickup rental event data.
 - `weather_data`: loads weather observations.
 - `holidays_data`: loads holiday information.
-- `hourly_rentals`: aggregates rental events by hour and creates time-based features.
-- `rentals_with_weather`: merges hourly rentals with weather data and handles missing weather values.
-- `final_bike_rental_data`: merges holiday information and creates an `is_holiday` feature.
-- `final_model_csv`: saves the final model-ready dataset as a CSV file.
+- `all_rental_events`: combines registered rentals and direct pickups into one rental event table.
+- `hourly_location_rentals`: aggregates rental events by hour, location, and rental type.
+- `rentals_with_weather`: merges location-level hourly rentals with weather data and handles missing weather values.
+- `final_rental_data`: merges holiday information and creates an `is_holiday` feature.
+- `final_model_csv`: saves the final full and model-ready datasets as CSV files.
 
 ### Asset Dependency Graph
 
@@ -29,12 +32,6 @@ weather_data ──────────────────────�
 holidays_data ────────────────────────────────────────────────────────────────┘
 ```
 
-### Implementation Approach
-
-I first implemented the transformation logic in a Jupyter notebook. This allowed me to explore the raw datasets, understand the column structure, test the table joins, check missing values, and validate the final dataset step by step.
-
-After the notebook workflow produced the expected final dataset, I simplified the logic and migrated it into Dagster. Each major step became a separate asset: loading raw data, aggregating rentals by hour, merging weather data, adding holiday information, and exporting the final model-ready CSV. This made the workflow reproducible and easier to monitor through the Dagster UI.
-
 
 ### Data Loading
 
@@ -42,18 +39,27 @@ The raw assets load CSV files from the data directory. Rental and weather timest
 
 ### Transformations
 
-The `hourly_rentals` asset aggregates registered rentals and direct pickups by hour. It merges the two hourly count tables, creates a complete hourly index, fills missing rental counts with zero, and creates time-based features such as hour of day, weekday, and weekend indicator.
+The `all_rental_events` asset selects the hour and location_id columns from both rental sources and adds a rental_type column to distinguish registered rentals from direct pickups. These two event tables are then concatenated into one combined rental event table.
 
-The `rentals_with_weather` asset joins the hourly rental dataset with weather data. Missing weather rows are marked before filling values. Numeric weather columns are interpolated, while categorical weather columns are filled using forward fill and backward fill.
+The `hourly_location_rentals` asset aggregates rental events by hour, location_id, and rental_type. This produces separate registered_count and direct_count columns for each location-hour pair. A total_count column is created by adding the two rental counts together.
 
-The `final_bike_rental_data` asset merges holiday data by date and creates an `is_holiday` feature. The `final_model_csv` asset removes the holiday text column and saves the final model-ready CSV file.
+To create a complete location-level hourly dataset, the pipeline builds a full hour-location table using all hourly timestamps and all observed rental locations. Missing location-hour rows are added, marked and filled with 0.
+
+Time-based features are then created from the hourly timestamp, including `date`, `hour_of_day`, `day_of_week`, `month`, and `is_weekend`.
+
+The `rentals_with_weather` asset joins the location-level hourly rental dataset with weather data by hour. Since weather data is hourly and not location-specific, the same weather observation is attached to all locations within the same hour. Missing weather rows are marked before filling values. Numeric weather columns are interpolated and then forward/backward filled, while categorical weather columns are filled using forward fill and backward fill.
+
+The `final_rental_data` asset merges holiday data by date and creates a numeric `is_holiday` feature. The holiday text column is kept in this asset for validation.
+
+The `final_model_csv` asset saves two CSV files: a full version that keeps the holiday name column for checking, and a model-ready version that removes the holiday text column and keeps only the numeric `is_holiday` feature.
 
 ### Final Dataset
 
 The final dataset contains:
 
-- hourly rental counts
-- total rental demand
+- location-level hourly rental counts
+- registered_count, direct_count, and total_count
+- location identifier
 - time-based features
 - weather features
 - missing-rental and missing-weather markers
