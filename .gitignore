@@ -1,1 +1,16 @@
 .ipynb_checkpoints/
+# Dagster local storage
+**/.tmp_dagster_home*/
+**/storage/
+**/.dagster/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# virtual environments
+.venv/
+**/.tmp_dagster_home*/
