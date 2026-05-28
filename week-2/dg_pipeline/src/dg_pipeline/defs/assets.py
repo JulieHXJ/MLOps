@@ -76,7 +76,7 @@ def hourly_location_rentals(context: AssetExecutionContext, all_rental_events: p
     hourly_location = full_table.merge(hourly_location, on=["hour", "location_id"], how="left")
 
     #handle missing values
-    hourly_location["missing_rental"] = (hourly_location["total_count"].isna().astype(int))
+    hourly_location["is_missing_rental"] = (hourly_location["total_count"].isna().astype(int))
 
     count_cols = ["registered_count", "direct_count", "total_count"]
     hourly_location[count_cols] = (hourly_location[count_cols].fillna(0).astype(int))
@@ -103,8 +103,8 @@ def hourly_location_rentals(context: AssetExecutionContext, all_rental_events: p
             "total_count_sum": int(
                 hourly_location["total_count"].sum()
             ),
-            "missing_rental_rows": int(
-                hourly_location["missing_rental"].sum()
+            "is_missing_rental_rows": int(
+                hourly_location["is_missing_rental"].sum()
             ),
             "preview": MetadataValue.md(hourly_location.head().to_markdown()),
         }
@@ -134,7 +134,7 @@ def rentals_with_weather(context: AssetExecutionContext, hourly_location_rentals
         if col != "hour"
     ]
 
-    weather_features["missing_weather"] = (weather_features[weather_columns].isna().any(axis=1).astype(int))
+    weather_features["is_missing_weather"] = (weather_features[weather_columns].isna().any(axis=1).astype(int))
     
     numeric_weather_cols = (weather_features[weather_columns].select_dtypes(include="number").columns.tolist())
     weather_features[numeric_weather_cols] = (weather_features[numeric_weather_cols].interpolate(method="linear").ffill().bfill())
@@ -149,8 +149,8 @@ def rentals_with_weather(context: AssetExecutionContext, hourly_location_rentals
         {
             "row_count": len(weather),
             "weather_row_count": len(weather_features),
-            "missing_weather_hours": int(
-                weather_features["missing_weather"].sum()
+            "is_missing_weather_hours": int(
+                weather_features["is_missing_weather"].sum()
             ),
             "remaining_missing_values": int(weather.isna().sum().sum()),
             "preview": MetadataValue.md(weather.head().to_markdown()),
