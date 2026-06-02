@@ -4,8 +4,7 @@ from dagster import asset, AssetExecutionContext, MetadataValue
 
 
 DATA_DIR = Path("../data")
-# output file path
-PROCESSED_DATA_DIR = Path("processed")
+PROCESSED_DATA_DIR = DATA_DIR / "processed"
 PROCESSED_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 @asset
@@ -65,30 +64,68 @@ def hourly_location_rentals(context: AssetExecutionContext, all_rental_events: p
         }
     )
 
-    hourly_location["total_count"] = (hourly_location["registered_count"] + hourly_location["direct_count"])
-    hourly_location = hourly_location.sort_values(["hour", "location_id"]).reset_index(drop=True)
+    hourly_location["total_count"] = (
+        hourly_location["registered_count"]
+        + hourly_location["direct_count"]
+    )
 
-    # create full hour and location tables 
-    full_hours = pd.DataFrame({"hour": pd.date_range(start=hourly_location["hour"].min(), end=hourly_location["hour"].max(),freq="h")})
-    all_locations = pd.DataFrame({"location_id": all_rental_events["location_id"].drop_duplicates().sort_values()})
+    hourly_location = (
+        hourly_location
+        .sort_values(["hour", "location_id"])
+        .reset_index(drop=True)
+    )
+
+    # Create a complete hour-location grid.
+    full_hours = pd.DataFrame(
+        {
+            "hour": pd.date_range(
+                start=hourly_location["hour"].min(),
+                end=hourly_location["hour"].max(),
+                freq="h",
+            )
+        }
+    )
+
+    all_locations = pd.DataFrame(
+        {
+            "location_id": (
+                all_rental_events["location_id"]
+                .drop_duplicates()
+                .sort_values()
+            )
+        }
+    )
 
     full_table = full_hours.merge(all_locations, how="cross")
-    hourly_location = full_table.merge(hourly_location, on=["hour", "location_id"], how="left")
 
-    #handle missing values
-    hourly_location["is_missing_rental"] = (hourly_location["total_count"].isna().astype(int))
+    hourly_location = full_table.merge(
+        hourly_location,
+        on=["hour", "location_id"],
+        how="left",
+    )
+
+    # mark rows with no original rental and filled with 0.
+    hourly_location["is_zero_filled_rental"] = (
+        hourly_location["total_count"].isna().astype(int)
+    )
 
     count_cols = ["registered_count", "direct_count", "total_count"]
-    hourly_location[count_cols] = (hourly_location[count_cols].fillna(0).astype(int))
 
-    # add time features like hour_of_day, weekday, is_weekend
+    hourly_location[count_cols] = (
+        hourly_location[count_cols]
+        .fillna(0)
+        .astype(int)
+    )
+
+    # add time-based features.
     hourly_location["date"] = hourly_location["hour"].dt.date
     hourly_location["hour_of_day"] = hourly_location["hour"].dt.hour
     hourly_location["day_of_week"] = hourly_location["hour"].dt.dayofweek
     hourly_location["month"] = hourly_location["hour"].dt.month
-    hourly_location["is_weekend"] = (hourly_location["day_of_week"].isin([5, 6]).astype(int))
+    hourly_location["is_weekend"] = (
+        hourly_location["day_of_week"].isin([5, 6]).astype(int)
+    )
 
-    # check summary in Dagster UI
     context.add_output_metadata(
         {
             "row_count": len(hourly_location),
@@ -103,10 +140,12 @@ def hourly_location_rentals(context: AssetExecutionContext, all_rental_events: p
             "total_count_sum": int(
                 hourly_location["total_count"].sum()
             ),
-            "is_missing_rental_rows": int(
-                hourly_location["is_missing_rental"].sum()
+            "zero_filled_rental_rows": int(
+                hourly_location["is_zero_filled_rental"].sum()
             ),
-            "preview": MetadataValue.md(hourly_location.head().to_markdown()),
+            "preview": MetadataValue.md(
+                hourly_location.head().to_markdown()
+            ),
         }
     )
 
@@ -117,75 +156,141 @@ def hourly_location_rentals(context: AssetExecutionContext, all_rental_events: p
 
 @asset
 def rentals_with_weather(context: AssetExecutionContext, hourly_location_rentals: pd.DataFrame, weather_data: pd.DataFrame) -> pd.DataFrame:
-    weather_features = weather_data.copy().drop(columns=["id", "datetime"], errors="ignore")
+    weather_features = weather_data.copy().drop(
+        columns=["id", "datetime"],
+        errors="ignore",
+    )
 
-    # handle missing weather date
-    full_table = pd.DataFrame({
-        "hour": pd.date_range(
-            start=hourly_location_rentals["hour"].min(),
-            end=hourly_location_rentals["hour"].max(),
-            freq="h",
-        )
-    })
+    full_hours = pd.DataFrame(
+        {
+            "hour": pd.date_range(
+                start=hourly_location_rentals["hour"].min(),
+                end=hourly_location_rentals["hour"].max(),
+                freq="h",
+            )
+        }
+    )
 
-    weather_features = full_table.merge(weather_features, on="hour", how="left")
+    weather_features = full_hours.merge(
+        weather_features,
+        on="hour",
+        how="left",
+    )
+
     weather_columns = [
         col for col in weather_features.columns
         if col != "hour"
     ]
 
-    weather_features["is_missing_weather"] = (weather_features[weather_columns].isna().any(axis=1).astype(int))
-    
-    numeric_weather_cols = (weather_features[weather_columns].select_dtypes(include="number").columns.tolist())
-    weather_features[numeric_weather_cols] = (weather_features[numeric_weather_cols].interpolate(method="linear").ffill().bfill())
+    # handle missing weather data
+    weather_features["is_missing_weather"] = (
+        weather_features[weather_columns]
+        .isna()
+        .any(axis=1)
+        .astype(int)
+    )
 
-    categorical_weather_cols = (weather_features[weather_columns].select_dtypes(exclude="number").columns.tolist())
-    weather_features[categorical_weather_cols] = (weather_features[categorical_weather_cols].ffill().bfill())
-    
-    # merge
-    weather = hourly_location_rentals.merge(weather_features, on="hour", how="left")
+    numeric_weather_cols = (
+        weather_features[weather_columns]
+        .select_dtypes(include="number")
+        .columns
+        .tolist()
+    )
+
+    weather_features[numeric_weather_cols] = (
+        weather_features[numeric_weather_cols]
+        .interpolate(method="linear")
+        .ffill()
+        .bfill()
+    )
+
+    categorical_weather_cols = (
+        weather_features[weather_columns]
+        .select_dtypes(exclude="number")
+        .columns
+        .tolist()
+    )
+
+    weather_features[categorical_weather_cols] = (
+        weather_features[categorical_weather_cols]
+        .ffill()
+        .bfill()
+    )
+
+    rentals_weather_data = hourly_location_rentals.merge(
+        weather_features,
+        on="hour",
+        how="left",
+    )
 
     context.add_output_metadata(
         {
-            "row_count": len(weather),
+            "row_count": len(rentals_weather_data),
             "weather_row_count": len(weather_features),
             "is_missing_weather_hours": int(
                 weather_features["is_missing_weather"].sum()
             ),
-            "remaining_missing_values": int(weather.isna().sum().sum()),
-            "preview": MetadataValue.md(weather.head().to_markdown()),
+            "remaining_missing_values": int(
+                rentals_weather_data.isna().sum().sum()
+            ),
+            "preview": MetadataValue.md(
+                rentals_weather_data.head().to_markdown()
+            ),
         }
     )
-    return weather
+    return rentals_weather_data
 
 
 @asset
 def final_rental_data(context: AssetExecutionContext, rentals_with_weather: pd.DataFrame, holidays_data: pd.DataFrame) -> pd.DataFrame:
-    holidays = holidays_data.copy().drop(columns="id", errors="ignore")
-    final_data = rentals_with_weather.merge(holidays[["date", "holiday"]], on="date", how="left")
-    final_data["is_holiday"] = final_data["holiday"].notna().astype(int)
+    holidays = holidays_data.copy().drop(
+        columns="id",
+        errors="ignore",
+    )
+
+    final_data = rentals_with_weather.merge(
+        holidays[["date", "holiday"]],
+        on="date",
+        how="left",
+    )
+
+    final_data["is_holiday"] = (
+        final_data["holiday"].notna().astype(int)
+    )
+
+    # add more flags
+    final_data["is_workday"] = (
+        (final_data["is_weekend"] == 0)
+        & (final_data["is_holiday"] == 0)
+    ).astype(int)
+
+    # avoid NaN for non-holiday rows
+    final_data["holiday"] = final_data["holiday"].fillna("Not a holiday")
+    output_path = PROCESSED_DATA_DIR / "final_enriched_rental_data.csv"
+    final_data.to_csv(output_path, index=False)
 
     context.add_output_metadata(
         {
+            "output_path": MetadataValue.path(str(output_path.resolve())),
             "row_count": len(final_data),
+            "column_count": len(final_data.columns),
             "holiday_rows": int(final_data["is_holiday"].sum()),
-            "holiday_dates": int(final_data.loc[final_data["is_holiday"], "date"].nunique()),
-            "preview": MetadataValue.md(final_data.head().to_markdown()),
+            "holiday_dates": int(
+                final_data.loc[
+                    final_data["is_holiday"] == 1,
+                    "date",
+                ].nunique()
+            ),
+            "workday_rows": int(final_data["is_workday"].sum()),
+            "remaining_missing_values": int(
+                final_data.isna().sum().sum()
+            ),
+            "preview": MetadataValue.md(
+                final_data.head().to_markdown()
+            ),
         }
     )
 
     return final_data
 
-@asset
-def final_model_csv(final_rental_data: pd.DataFrame) -> str:
-    full_data = final_rental_data.copy().drop(columns="holiday", errors="ignore")
-    model_data = full_data.drop(columns=["holiday"], errors="ignore")
-
-    full_output_path = PROCESSED_DATA_DIR / "final_data_with_holiday.csv"
-    model_output_path = PROCESSED_DATA_DIR / "final_model_data.csv"
-
-    full_data.to_csv(full_output_path, index=False)
-    model_data.to_csv(model_output_path, index=False)
-
-    return str(model_output_path)
 
