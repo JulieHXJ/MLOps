@@ -242,7 +242,7 @@ def rentals_with_weather(context: AssetExecutionContext, hourly_location_rentals
 
 
 @asset
-def final_rental_data(context: AssetExecutionContext, rentals_with_weather: pd.DataFrame, holidays_data: pd.DataFrame) -> pd.DataFrame:
+def final_enriched_rental_data(context: AssetExecutionContext, rentals_with_weather: pd.DataFrame, holidays_data: pd.DataFrame) -> pd.DataFrame:
     holidays = holidays_data.copy().drop(
         columns="id",
         errors="ignore",
@@ -293,4 +293,173 @@ def final_rental_data(context: AssetExecutionContext, rentals_with_weather: pd.D
 
     return final_data
 
+
+@asset
+def model_ready_data(context: AssetExecutionContext, final_enriched_rental_data: pd.DataFrame) -> pd.DataFrame:
+    data = final_enriched_rental_data.copy()
+    data["hour"] = pd.to_datetime(data["hour"])
+    data["date"] = pd.to_datetime(data["date"])
+
+    artificial_rows = data.loc[
+        data["is_zero_filled_rental"].astype(bool)
+    ]
+
+    data = data.loc[
+        ~data["is_zero_filled_rental"].astype(bool)
+    ].copy()
+
+    removed_artificial_rows = len(artificial_rows)
+
+    hourly_information_columns = [
+        "date",
+        "hour_of_day",
+        "day_of_week",
+        "month",
+        "is_weekend",
+        "conditions",
+        "temperature_c",
+        "perceived_temperature_c",
+        "humidity",
+        "windspeed_kmh",
+        "holiday",
+        "is_holiday",
+        "is_workday",
+    ]
+
+    inconsistent_columns = []
+
+    for column in hourly_information_columns:
+        has_different_values_within_hour = (
+            data
+            .groupby("hour")[column]
+            .nunique(dropna=False)
+            .gt(1)
+            .any()
+        )
+
+        if has_different_values_within_hour:
+            inconsistent_columns.append(column)
+
+    if inconsistent_columns:
+        raise ValueError(
+            "These columns are not identical across locations "
+            f"within the same hour: {inconsistent_columns}"
+        )
+
+    # -------------------------------------------------
+    # 5. Aggregate location-level rentals into
+    #    city-level hourly rental demand
+    # -------------------------------------------------
+    aggregation_rules = {
+        "direct_count": "sum",
+        "registered_count": "sum",
+        "date": "first",
+        "hour_of_day": "first",
+        "day_of_week": "first",
+        "month": "first",
+        "is_weekend": "first",
+        "conditions": "first",
+        "temperature_c": "first",
+        "perceived_temperature_c": "first",
+        "humidity": "first",
+        "windspeed_kmh": "first",
+        "holiday": "first",
+        "is_holiday": "first",
+        "is_workday": "first",
+    }
+
+    hourly_data = (
+        data
+        .groupby("hour", as_index=False)
+        .agg(aggregation_rules)
+        .sort_values("hour")
+        .reset_index(drop=True)
+    )
+
+    # -------------------------------------------------
+    # 6. Recalculate target after aggregation
+    # -------------------------------------------------
+    hourly_data["total_count"] = (
+        hourly_data["direct_count"]
+        + hourly_data["registered_count"]
+    )
+
+    # Put the target column near the rental count columns
+    ordered_columns = [
+        "hour",
+        "direct_count",
+        "registered_count",
+        "total_count",
+        "date",
+        "hour_of_day",
+        "day_of_week",
+        "month",
+        "is_weekend",
+        "conditions",
+        "temperature_c",
+        "perceived_temperature_c",
+        "humidity",
+        "windspeed_kmh",
+        "holiday",
+        "is_holiday",
+        "is_workday",
+    ]
+
+    hourly_data = hourly_data[ordered_columns]
+
+    # -------------------------------------------------
+    # 7. Final checks
+    # -------------------------------------------------
+    duplicate_hours = hourly_data["hour"].duplicated().sum()
+
+    if duplicate_hours > 0:
+        raise ValueError(
+            f"Hourly aggregation failed: {duplicate_hours} duplicate hours remain."
+        )
+
+    if hourly_data.isna().sum().sum() > 0:
+        raise ValueError(
+            "Missing values remain in model-ready hourly data."
+        )
+
+    # -------------------------------------------------
+    # 8. Save output
+    # -------------------------------------------------
+    output_path = (
+        PROCESSED_DATA_DIR
+        / "model_ready_hourly_rental_data.csv"
+    )
+
+    hourly_data.to_csv(output_path, index=False)
+
+    # -------------------------------------------------
+    # 9. Dagster metadata
+    # -------------------------------------------------
+    context.add_output_metadata(
+        {
+            "output_path": MetadataValue.path(str(output_path.resolve())),
+            "removed_artificial_rows": removed_artificial_rows,
+            "remaining_location_level_rows": len(data),
+            "final_hourly_rows": len(hourly_data),
+            "final_column_count": len(hourly_data.columns),
+            "remaining_duplicate_hours": int(duplicate_hours),
+            "remaining_missing_values": int(
+                hourly_data.isna().sum().sum()
+            ),
+            "total_direct_rentals": int(
+                hourly_data["direct_count"].sum()
+            ),
+            "total_registered_rentals": int(
+                hourly_data["registered_count"].sum()
+            ),
+            "total_rentals": int(
+                hourly_data["total_count"].sum()
+            ),
+            "preview": MetadataValue.md(
+                hourly_data.head().to_markdown()
+            ),
+        }
+    )
+
+    return hourly_data
 
