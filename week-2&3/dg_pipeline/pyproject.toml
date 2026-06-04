@@ -7,6 +7,7 @@ dependencies = [
     "dagster-dg-cli>=1.13.6",
     "dagster-webserver>=1.13.6",
     "pandas>=2.3.3",
+    "scikit-learn>=1.7.2",
 ]
 
 [dependency-groups]
