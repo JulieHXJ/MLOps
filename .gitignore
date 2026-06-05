@@ -22,3 +22,4 @@ week-2&3/dg_pipeline/processed/asset_outputs/
 week-2&3/dg_pipeline/.dagster_home/
 week-2&3/dg_pipeline/.tmp_dagster_home*/week-2&3/data/processed/asset_outputs/
 week-2&3/data/processed/*.csv
+week-2&3/data/processed/asset_outputs/
