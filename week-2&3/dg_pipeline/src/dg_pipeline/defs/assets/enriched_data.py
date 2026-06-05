@@ -8,13 +8,19 @@ DATA_DIR = Path("../data")
 PROCESSED_DATA_DIR = DATA_DIR / "processed"
 PROCESSED_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-@asset(group_name="enrichment")
+@asset(group_name="enriched_data")
 def rentals_with_weather(context: AssetExecutionContext, hourly_location_rentals: pd.DataFrame, weather_data: pd.DataFrame) -> pd.DataFrame:
-    """Merge observed hourly rental demand with available weather observations."""
+    """
+    Merge observed hourly rental demand with hourly weather observations.
+
+    This asset only keeps observed rental hours.
+    It does not create or fill missing rental hours.
+    """
     weather_features = weather_data.copy().drop(
         columns=["id", "datetime"],
         errors="ignore",
     )
+
 
     duplicate_weather_hours = int(
         weather_features["hour"].duplicated().sum()
@@ -32,58 +38,62 @@ def rentals_with_weather(context: AssetExecutionContext, hourly_location_rentals
         how="left",
     )
 
-    remaining_missing_values = int(
-        rentals_weather_data.isna().sum().sum()
-    )
-
-    if remaining_missing_values > 0:
-        raise ValueError(
-            "Weather values are missing for observed rental hours."
-        )
-
-
     context.add_output_metadata(
         {
             "row_count": len(rentals_weather_data),
-            "weather_rows_used": int(
-                rentals_weather_data["hour"].nunique()
+            "observed_hours": int(rentals_weather_data["hour"].nunique()),
+            "location_count": int(
+                rentals_weather_data["location_id"].nunique()
             ),
-            "remaining_missing_values": remaining_missing_values,
             "preview": MetadataValue.md(
                 rentals_weather_data.head().to_markdown()
             ),
         }
     )
+
     return rentals_weather_data
 
 
-@asset(group_name="enrichment")
-def final_enriched_rental_data(context: AssetExecutionContext, rentals_with_weather: pd.DataFrame, holidays_data: pd.DataFrame) -> pd.DataFrame:
-    """Add holiday information and derive holiday/workday indicators."""
+@asset(group_name="enriched_data")
+def enriched_rental_data(context: AssetExecutionContext, rentals_with_weather: pd.DataFrame, holidays_data: pd.DataFrame) -> pd.DataFrame:
+    """Add holiday information and create final enriched rental dataset."""
     holidays = holidays_data.copy().drop(
         columns="id",
         errors="ignore",
     )
 
-    final_data = rentals_with_weather.merge(
+    hourly_group_columns = [
+        "hour",
+        "date",
+        "hour_of_day",
+        "day_of_week",
+        "month",
+        "is_weekend",
+        "temperature_c",
+        "humidity",
+        "windspeed_kmh",
+        "conditions",
+    ]
+
+    hourly_data = (
+        rentals_with_weather
+        .groupby(hourly_group_columns, as_index=False)
+        [["registered_count", "direct_count", "total_count"]]
+        .sum()
+    )
+
+    final_data = hourly_data.merge(
         holidays[["date", "holiday"]],
         on="date",
         how="left",
     )
 
-    final_data["is_holiday"] = (
-        final_data["holiday"].notna().astype(int)
-    )
+    # add flags
+    final_data["is_holiday"] = final_data["holiday"].notna().astype(int)
+    final_data["is_workday"] = ((final_data["is_weekend"] == 0) & (final_data["is_holiday"] == 0)).astype(int)
 
-    # add more flags
-    final_data["is_workday"] = (
-        (final_data["is_weekend"] == 0)
-        & (final_data["is_holiday"] == 0)
-    ).astype(int)
 
-    # avoid NaN for non-holiday rows
-    final_data["holiday"] = final_data["holiday"].fillna("Not a holiday")
-    output_path = PROCESSED_DATA_DIR / "final_enriched_rental_data.csv"
+    output_path = PROCESSED_DATA_DIR / "enriched_hourly_location_rental.csv"
     final_data.to_csv(output_path, index=False)
 
     context.add_output_metadata(

@@ -4,7 +4,6 @@ from dagster import asset
 
 from dg_pipeline.resources.data_loader import BikeRentalDataLoader
 
-
 @asset(group_name = "raw_data")
 def registered_rentals(data_loader: BikeRentalDataLoader) -> pd.DataFrame:
     registered = data_loader.load_dataset("registered_rentals")

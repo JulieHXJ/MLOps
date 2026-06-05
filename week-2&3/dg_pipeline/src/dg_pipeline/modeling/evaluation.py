@@ -11,60 +11,8 @@ REQUIRED_PREDICTION_COLUMNS = [
 ]
 
 
-def prepare_train_test_split(
-    model_ready_data: pd.DataFrame,
-    features: list[str],
-    target: str,
-) -> tuple[
-    pd.DataFrame,
-    pd.DataFrame,
-    pd.Series,
-    pd.Series,
-    pd.Series,
-]:
-    """Split 80/20 use for final model comparison."""
-    required_columns = [
-        "hour",
-        *features,
-        target,
-    ]
 
-    missing_columns = [
-        column
-        for column in required_columns
-        if column not in model_ready_data.columns
-    ]
-
-    if missing_columns:
-        raise ValueError(
-            "Model cannot be trained because required columns "
-            f"are missing: {missing_columns}"
-        )
-
-    model_data = model_ready_data[required_columns].copy()
-    model_data["hour"] = pd.to_datetime(model_data["hour"])
-
-    model_data = (
-        model_data
-        .sort_values("hour")
-        .reset_index(drop=True)
-    )
-
-    split_index = int(len(model_data) * 0.8)
-
-    train_data = model_data.iloc[:split_index].copy()
-    test_data = model_data.iloc[split_index:].copy()
-
-    X_train = train_data[features]
-    X_test = test_data[features]
-    y_train = train_data[target]
-    y_test = test_data[target]
-    test_hours = test_data["hour"]
-
-    return X_train, X_test, y_train, y_test, test_hours
-
-
-def evaluate_fitted_regressor(
+def evaluate_regressor(
     model_name: str,
     fitted_model: Any,
     X_train: pd.DataFrame,

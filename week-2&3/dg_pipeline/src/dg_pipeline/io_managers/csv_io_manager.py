@@ -1,78 +1,81 @@
 from pathlib import Path
-from typing import Any
 
-import dagster as dg
 import pandas as pd
+from dagster import ConfigurableIOManager, InputContext, OutputContext
 
+class CsvIOManager(ConfigurableIOManager):
+    """
+    Save pandas DataFrame and Series assets as CSV files.
 
-class CsvIOManager(dg.ConfigurableIOManager):
-    """Store Pandas DataFrame asset outputs as CSV files and load them downstream."""
+    DataFrame assets are saved directly.
+    Series assets are converted to a single-column CSV and restored as Series
+    when loaded.
+    """
 
     base_dir: str = "processed/asset_outputs"
 
-    def _get_path(self, asset_key: dg.AssetKey) -> Path:
-        """Build a CSV file path from a Dagster asset key."""
-        path = Path(self.base_dir).joinpath(*asset_key.path)
-        return path.with_suffix(".csv")
+    def _get_path(self, context: OutputContext | InputContext) -> Path:
+        asset_key = context.asset_key
 
-    def handle_output(
-        self,
-        context: dg.OutputContext,
-        obj: Any,
-    ) -> None:
-        """Write one asset output DataFrame to a CSV file."""
-        if not isinstance(obj, pd.DataFrame):
-            raise TypeError(
-                "CsvDataFrameIOManager only supports pandas DataFrame outputs. "
-                f"Asset '{context.asset_key.to_user_string()}' returned "
-                f"{type(obj).__name__}."
+        if asset_key is None:
+            raise ValueError("CsvIOManager requires an asset key.")
+
+        asset_name = "_".join(asset_key.path)
+        return Path(self.base_dir) / f"{asset_name}.csv"
+
+    def handle_output(self, context: OutputContext, obj) -> None:
+        path = self._get_path(context)
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        if isinstance(obj, pd.DataFrame):
+            obj.to_csv(path, index=False)
+            context.add_output_metadata(
+                {
+                    "path": str(path.resolve()),
+                    "row_count": len(obj),
+                    "column_count": len(obj.columns),
+                    "stored_type": "DataFrame",
+                }
             )
+            return
+        if isinstance(obj, pd.Series):
+            series_name = obj.name or "value"
 
-        output_path = self._get_path(context.asset_key)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+            obj.to_frame(name=series_name).to_csv(path, index=False)
 
-        obj.to_csv(output_path, index=False)
-
-        context.add_output_metadata(
-            {
-                "csv_storage_path": dg.MetadataValue.path(
-                    str(output_path.resolve())
-                ),
-                "stored_row_count": len(obj),
-                "stored_column_count": len(obj.columns),
-            }
+            context.add_output_metadata(
+                {
+                    "path": str(path.resolve()),
+                    "row_count": len(obj),
+                    "column_count": 1,
+                    "stored_type": "Series",
+                    "series_name": series_name,
+                }
+            )
+            return
+        raise TypeError(
+            "CsvIOManager only supports pandas DataFrame and Series outputs. "
+            f"Asset '{context.asset_key}' returned {type(obj).__name__}."
         )
 
-    def load_input(
-        self,
-        context: dg.InputContext,
-    ) -> pd.DataFrame:
-        """Load an upstream asset DataFrame from its CSV file."""
-        if context.upstream_output is None:
-            raise ValueError(
-                "CsvDataFrameIOManager can only load inputs from upstream assets."
-            )
+    def load_input(self, context: InputContext):
+        path = self._get_path(context)
 
-        input_path = self._get_path(
-            context.upstream_output.asset_key
-        )
-
-        if not input_path.exists():
+        if not path.exists():
             raise FileNotFoundError(
-                "Stored CSV output was not found for upstream asset "
-                f"'{context.upstream_output.asset_key.to_user_string()}': "
-                f"{input_path.resolve()}"
+                f"Expected asset file does not exist: {path.resolve()}"
             )
 
-        data = pd.read_csv(input_path)
+        data = pd.read_csv(path)
 
-        datetime_columns = [
-            column
-            for column in ["datetime", "hour", "date"]
-            if column in data.columns
-        ]
+        stored_type = None
+        if context.upstream_output is not None:
+            stored_type = context.upstream_output.metadata.get("stored_type")
 
-        for column in datetime_columns:
-            data[column] = pd.to_datetime(data[column])
+            if hasattr(stored_type, "value"):
+                stored_type = stored_type.value
+
+        if stored_type == "Series":
+            return data.iloc[:, 0]
 
         return data

@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 from dagster import AssetExecutionContext, MetadataValue, asset
 
-from dg_pipeline.transformations.model import (
+from dg_pipeline.modeling.model import (
     aggregate_city_hourly_demand,
     validate_hourly_feature_consistency,
     validate_model_ready_data,
@@ -18,9 +18,9 @@ PROCESSED_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
 @asset(group_name="model_data")
-def model_ready_data(context: AssetExecutionContext, final_enriched_rental_data: pd.DataFrame) -> pd.DataFrame:
+def model_ready_data(context: AssetExecutionContext, enriched_rental_data: pd.DataFrame) -> pd.DataFrame:
     """Create the final hourly dataset for model training."""
-    data = final_enriched_rental_data.copy()
+    data = enriched_rental_data.copy()
     data["hour"] = pd.to_datetime(data["hour"])
     data["date"] = pd.to_datetime(data["date"])
 
