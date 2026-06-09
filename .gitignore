@@ -15,11 +15,42 @@ __pycache__/
 .venv/
 **/.tmp_dagster_home*/
 
-# Dagster generated outputs
-week-2&3/dg_pipeline/processed/asset_outputs/
 
-# Local Dagster instance storage
-week-2&3/dg_pipeline/.dagster_home/
-week-2&3/dg_pipeline/.tmp_dagster_home*/week-2&3/data/processed/asset_outputs/
-week-2&3/data/processed/*.csv
-week-2&3/data/processed/asset_outputs/
+# Generated pipeline outputs
+bike_rental/data/processed/asset_outputs/
+
+# Local processed data outputs
+bike_rental/data/processed/*.csv
+bike_rental/dg_pipeline/processed/*.csv
+
+# Raw/local data files
+bike_rental/data/*.csv
+
+# Dagster local state
+bike_rental/dg_pipeline/.dg/
+.dagster/
+storage/
+history/
+logs/
+
+# MLflow local tracking
+mlruns/
+mlartifacts/
+bike_rental/mlruns/
+bike_rental/mlartifacts/
+bike_rental/dg_pipeline/mlruns/
+bike_rental/dg_pipeline/mlartifacts/
+
+# Environment / credentials
+.env
+*.key
+*.secret
+lakefs.yaml
+credentials.yaml
+
+# Python / system
+__pycache__/
+*.py[cod]
+.venv/
+.DS_Store
+.ipynb_checkpoints/
