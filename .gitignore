@@ -21,8 +21,10 @@ credentials.yaml
 # Temporary local test files
 bike_rental/dg_pipeline/test_lakefs.py
 
-# Local Dagster state
+# Dagster local state
 bike_rental/dg_pipeline/.dg/
+bike_rental/dg_pipeline/.tmp_dagster_home_*/
+.tmp_dagster_home_*/
 .dagster/
 storage/
 history/
