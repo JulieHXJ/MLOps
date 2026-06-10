@@ -985,6 +985,7 @@ dependencies = [
     { name = "dagster" },
     { name = "dagster-dg-cli" },
     { name = "dagster-webserver" },
+    { name = "fastapi" },
     { name = "lakefs" },
     { name = "lakefs-spec" },
     { name = "mlflow" },
@@ -992,6 +993,7 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scikit-learn", version = "1.9.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "uvicorn" },
     { name = "xgboost" },
 ]
 
@@ -1007,12 +1009,14 @@ requires-dist = [
     { name = "dagster", specifier = "==1.13.6" },
     { name = "dagster-dg-cli", specifier = ">=1.13.6" },
     { name = "dagster-webserver", specifier = ">=1.13.6" },
+    { name = "fastapi", specifier = ">=0.136.3" },
     { name = "lakefs", specifier = ">=0.16.0" },
     { name = "lakefs-spec", specifier = ">=0.14.0" },
     { name = "mlflow", specifier = ">=3.13.0" },
     { name = "pandas", specifier = ">=2.3.3" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "scikit-learn", specifier = ">=1.7.2" },
+    { name = "uvicorn", specifier = ">=0.48.0" },
     { name = "xgboost", specifier = ">=3.2.0" },
 ]
 

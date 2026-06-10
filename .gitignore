@@ -41,3 +41,9 @@ __pycache__/
 .venv/
 .DS_Store
 .ipynb_checkpoints/
+
+# MLflow local database
+bike_rental/dg_pipeline/mlflow.db
+*.db
+*.sqlite
+*.sqlite3

@@ -6,12 +6,14 @@ dependencies = [
     "dagster==1.13.6",
     "dagster-dg-cli>=1.13.6",
     "dagster-webserver>=1.13.6",
+    "fastapi>=0.136.3",
     "lakefs>=0.16.0",
     "lakefs-spec>=0.14.0",
     "mlflow>=3.13.0",
     "pandas>=2.3.3",
     "python-dotenv>=1.2.2",
     "scikit-learn>=1.7.2",
+    "uvicorn>=0.48.0",
     "xgboost>=3.2.0",
 ]
 

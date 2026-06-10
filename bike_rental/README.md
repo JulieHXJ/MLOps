@@ -1,24 +1,72 @@
-## Bike Rental Dagster Pipeline
+# Bike Rental Demand Forecasting MLOps Pipeline
+## Project Overview
+This project implements an MLOps pipeline for bike rental demand forecasting. The pipeline starts from raw bike rental, weather, and holiday data, transforms them into hourly model-ready datasets, trains several regression models, tracks experiments with MLflow, versions datasets with LakeFS, and registers the selected production model in the MLflow Model Registry.
 
-This project implements a Dagster asset pipeline for transforming raw bike rental, weather, and holiday data into a model-ready location-level hourly demand dataset.
+The final production model is an XGBoost regression model trained on engineered hourly demand features.
 
-Each row in the final dataset represents the rental demand for one location during one specific hourly time window. The dataset is enriched with time-based features, hourly weather information, missing-data markers, and holiday information.
+## Pipeline Overview
 
-### Pipeline Overview
+The project contains three main stages:
 
-The pipeline contains four raw data assets and five derived assets:
+Data processing
+    ↓
+Model training and comparison
+    ↓
+MLOps integration with MLflow and LakeFS
 
-- `registered_rentals`: loads registered bike rental event data.
-- `direct_pickups`: loads direct pickup rental event data.
-- `weather_data`: loads weather observations.
-- `holidays_data`: loads holiday information.
-- `all_rental_events`: combines registered rentals and direct pickups into one rental event table.
-- `hourly_location_rentals`: aggregates rental events by hour, location, and rental type.
-- `rentals_with_weather`: merges location-level hourly rentals with weather data and handles missing weather values.
-- `final_rental_data`: merges holiday information and creates an `is_holiday` feature.
-- `final_model_csv`: saves the final full and model-ready datasets as CSV files.
+The main processed datasets are:
 
-### Asset Dependency Graph
+- enriched_rental_data: rental data enriched with weather and holiday information.
+- aggregated_hourly_data: city-level hourly rental demand dataset.
+- engineered_model_data: final model-ready dataset with engineered time, calendar, cyclical, lag, and rolling demand features.
+
+The production model is trained on: `engineered_model_data.csv`
+
+## Environment Setup
+The main MLOps services used in the project are:
+
+- Dagster for workflow orchestration
+- MLflow for experiment tracking and model registry
+- LakeFS for data versioning
+- pandas, scikit-learn, and XGBoost for data processing and model training
+
+### Install Dependencies
+```
+uv sync
+uv add mlflow lakefs lakefs-spec python-dotenv xgboost
+```
+
+### env
+Create a local .env file. A safe template can be stored as `.env.example`
+
+## Run services
+### 1. LakeFS
+```
+uv run python -m lakefs.quickstart
+```
+The LakeFS UI is available at:
+```
+http://127.0.0.1:8000
+```
+
+### 2. MLflow
+```
+uv run mlflow ui --port 5000
+```
+The MLflow UI is available at:
+
+```
+http://127.0.0.1:5000
+```
+### 3. Dagster
+```
+uv run dg dev
+```
+The Dagster UI is available at the local URL shown in the terminal.
+
+
+
+## Data Processing Summary
 
 The pipeline is organized as a sequence of Dagster assets. The raw rental assets are first transformed into hourly rental demand, then enriched with weather and holiday information, and finally exported as a model-ready CSV file.
 
@@ -28,45 +76,73 @@ registered_rentals ─┐
 direct_pickups ─────┘                              │
                                                    ├──> rentals_with_weather ─┐
 weather_data ──────────────────────────────────────┘                          │
-                                                                              ├──> final_bike_rental_data ───> final_model_csv
+                                                                              ├──> enriched_rental_data ───> engineered_model_data
 holidays_data ────────────────────────────────────────────────────────────────┘
 ```
 
+The engineered feature dataset includes:
 
-### Data Loading
+- calendar features
+- rush hour indicators
+- weekend and holiday indicators
+- cyclical encodings for hour, weekday, and month
+- lag features
+- rolling demand features
+- weather variables
+- categorical weather condition features
 
-The raw assets load CSV files from the data directory. Rental and weather timestamps are converted to pandas datetime values, and an hourly timestamp column is created using `dt.floor("h")`. Holiday dates are converted to Python date values so they can be merged with the hourly rental data.
 
-### Transformations
+## Dagster Asset Checks
 
-The `all_rental_events` asset selects the hour and location_id columns from both rental sources and adds a rental_type column to distinguish registered rentals from direct pickups. These two event tables are then concatenated into one combined rental event table.
+Before model training, the LakeFS dataset is validated with Dagster asset checks.
 
-The `hourly_location_rentals` asset aggregates rental events by hour, location_id, and rental_type. This produces separate registered_count and direct_count columns for each location-hour pair. A total_count column is created by adding the two rental counts together.
+The checks verify that:
 
-To create a complete location-level hourly dataset, the pipeline builds a full hour-location table using all hourly timestamps and all observed rental locations. Missing location-hour rows are added, marked and filled with 0.
+- the dataset is not empty
+- all required engineered feature columns are present
+- the target column has no missing values
+- the target column has no negative values
+- the hourly timestamp column can be parsed correctly
 
-Time-based features are then created from the hourly timestamp, including `date`, `hour_of_day`, `day_of_week`, `month`, and `is_weekend`.
+These checks help prevent invalid or unexpected data from entering the model training workflow.
 
-The `rentals_with_weather` asset joins the location-level hourly rental dataset with weather data by hour. Since weather data is hourly and not location-specific, the same weather observation is attached to all locations within the same hour. Missing weather rows are marked before filling values. Numeric weather columns are interpolated and then forward/backward filled, while categorical weather columns are filled using forward fill and backward fill.
 
-The `final_rental_data` asset merges holiday data by date and creates a numeric `is_holiday` feature. The holiday text column is kept in this asset for validation.
+## Model Training
 
-The `final_model_csv` asset saves two CSV files: a full version that keeps the holiday name column for checking, and a model-ready version that removes the holiday text column and keeps only the numeric `is_holiday` feature.
+The project compares multiple regression models:
 
-### Final Dataset
+- Linear Regression
+- Random Forest Regressor
+- Gradient Boosting Regressor
+- XGBoost Regressor
 
-The final dataset contains:
+## MLflow Experiment Tracking
 
-- location-level hourly rental counts
-- registered_count, direct_count, and total_count
-- location identifier
-- time-based features
-- weather features
-- missing-rental and missing-weather markers
-- holiday indicator
+MLflow is used to track model training runs. Each run logs:
 
-Boolean features are stored as `0` and `1` to make the CSV easier to use in later machine learning steps.
+- model name
+- feature set
+- model stage
+- model parameters
+- train/test metrics
+- trained model artifact
+- dataset preview
+- LakeFS dataset metadata
 
-### Validation
+## LakeFS Data Versioning Strategy
+Each MLflow model run records:
 
-The Dagster assets attach metadata such as row counts, count sums, missing marker counts, output paths, and dataset previews. These checks are used to verify that the hourly aggregation, weather merge, holiday merge, and CSV export were completed successfully.
+- lakefs_repo
+- lakefs_branch
+- lakefs_commit_id
+- lakefs_dataset_path
+- lakefs_uri
+
+## Future Improvements
+
+Possible future improvements include:
+
+- Compare chronological split and random split strategies.
+- Add automated tests for data loading and feature engineering.
+- Add a model promotion rule instead of manually selecting the production model.
+- Add a LakeFS-backed IO manager for more complete asset versioning.

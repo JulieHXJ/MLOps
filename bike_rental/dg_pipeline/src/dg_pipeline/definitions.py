@@ -15,13 +15,31 @@ from dg_pipeline.defs.resources.data_loader import BikeRentalDataLoader
 from dg_pipeline.defs.io_managers.csv_io_manager import CsvIOManager
 
 
+
+from dg_pipeline.defs.assets.data.lakefs_data import (
+    lakefs_engineered_model_data_not_empty,
+    lakefs_engineered_model_data_required_columns,
+    lakefs_engineered_model_data_target_not_missing,
+    lakefs_engineered_model_data_target_non_negative,
+    lakefs_engineered_model_data_hour_parseable,
+)
+
 all_assets = load_assets_from_package_module(
     assets_package
 )
 
 
+all_asset_checks = [
+    lakefs_engineered_model_data_not_empty,
+    lakefs_engineered_model_data_required_columns,
+    lakefs_engineered_model_data_target_not_missing,
+    lakefs_engineered_model_data_target_non_negative,
+    lakefs_engineered_model_data_hour_parseable,
+]
+
 defs = Definitions(
     assets=all_assets,
+    asset_checks=all_asset_checks,
     resources={
         "data_loader": BikeRentalDataLoader(
             data_dir="../data",
