@@ -45,6 +45,7 @@ def log_model_training_run(
     test_rows: int,
     feature_count_before_encoding: int,
     dataset: pd.DataFrame | None = None,
+    lakefs_metadata: dict | None = None,
 ) -> str:
     """
     Log one model training run to MLflow.
@@ -63,6 +64,11 @@ def log_model_training_run(
         mlflow.log_param("feature_set", feature_set)
         mlflow.log_param("model_stage", model_stage)
         mlflow.log_param("model_type", type(final_estimator).__name__)
+
+        if lakefs_metadata is not None:
+            for key, value in lakefs_metadata.items():
+                mlflow.log_param(key, value)
+
 
         mlflow.log_param("train_rows", train_rows)
         mlflow.log_param("test_rows", test_rows)

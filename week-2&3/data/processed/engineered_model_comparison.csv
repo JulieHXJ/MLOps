@@ -1,4 +1,0 @@
-model,test_mae,test_rmse,test_r2,negative_predictions
-Gradient Boosting Engineered Features,43.884779183075324,68.9133405351834,0.9013702261636574,62
-Random Forest Engineered Features,45.389166004056555,72.06315805064587,0.8921480472042047,0
-Linear Regression Engineered Features,50.56375713407179,81.15191766573811,0.8632274305225168,151

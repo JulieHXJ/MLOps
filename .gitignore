@@ -1,39 +1,7 @@
-.ipynb_checkpoints/
-# Dagster local storage
-**/.tmp_dagster_home*/
-**/storage/
-**/.dagster/
-
-# Python cache
-__pycache__/
-*.pyc
-
-# Jupyter checkpoints
-.ipynb_checkpoints/
-
-# virtual environments
-.venv/
-**/.tmp_dagster_home*/
-
-
-# Generated pipeline outputs
+# Generated Dagster asset outputs
 bike_rental/data/processed/asset_outputs/
 
-# Local processed data outputs
-bike_rental/data/processed/*.csv
-bike_rental/dg_pipeline/processed/*.csv
-
-# Raw/local data files
-bike_rental/data/*.csv
-
-# Dagster local state
-bike_rental/dg_pipeline/.dg/
-.dagster/
-storage/
-history/
-logs/
-
-# MLflow local tracking
+# Local MLflow tracking data
 mlruns/
 mlartifacts/
 bike_rental/mlruns/
@@ -41,12 +9,29 @@ bike_rental/mlartifacts/
 bike_rental/dg_pipeline/mlruns/
 bike_rental/dg_pipeline/mlartifacts/
 
-# Environment / credentials
+# Local environment / credentials
 .env
+bike_rental/dg_pipeline/.env
 *.key
 *.secret
 lakefs.yaml
 credentials.yaml
+.lakectl.yaml
+
+# Temporary local test files
+bike_rental/dg_pipeline/test_lakefs.py
+
+# Local Dagster state
+bike_rental/dg_pipeline/.dg/
+.dagster/
+storage/
+history/
+logs/
+
+# Model artifacts
+*.pkl
+*.joblib
+*.pickle
 
 # Python / system
 __pycache__/

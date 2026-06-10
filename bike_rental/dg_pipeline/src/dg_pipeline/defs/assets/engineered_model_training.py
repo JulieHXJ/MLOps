@@ -25,6 +25,8 @@ from dg_pipeline.utils.model_pipeline import (
 )
 
 from dg_pipeline.utils.mlflow_log import log_model_training_run
+from dg_pipeline.utils.lakefs_config import get_lakefs_config
+from dg_pipeline.utils.lakefs_io import build_lakefs_uri
 
 
 @multi_asset(
@@ -39,7 +41,7 @@ from dg_pipeline.utils.mlflow_log import log_model_training_run
 )
 def engineered_train_test_data(
     context: AssetExecutionContext,
-    engineered_model_data: pd.DataFrame,
+    lakefs_engineered_model_data: pd.DataFrame,
 ):
     """Create chronological train/test data for the engineered feature set."""
 
@@ -54,7 +56,7 @@ def engineered_train_test_data(
         train_data,
         test_data,
     ) = time_based_train_test_split(
-        data=engineered_model_data,
+        data=lakefs_engineered_model_data,
         feature_config=feature_config,
     )
 
@@ -126,6 +128,17 @@ def engineered_model_predictions(
         ),
     }
 
+    lakefs_config = get_lakefs_config()
+
+    lakefs_metadata = {
+        "data_source": "lakefs",
+        "lakefs_repo": lakefs_config.repo,
+        "lakefs_branch": lakefs_config.branch,
+        "lakefs_commit_id": lakefs_config.commit_id or "not_set",
+        "lakefs_dataset_path": lakefs_config.dataset_path,
+        "lakefs_uri": build_lakefs_uri(lakefs_config),
+    }
+
     outputs = {}
 
     for output_name, (model_name, pipeline_builder) in model_builders.items():
@@ -156,6 +169,7 @@ def engineered_model_predictions(
             test_rows=len(X_test_engineered),
             feature_count_before_encoding=len(feature_config["features"]),
             dataset=X_train_engineered,
+            lakefs_metadata=lakefs_metadata,
         )
 
         predictions.attrs["mlflow_run_id"] = run_id
