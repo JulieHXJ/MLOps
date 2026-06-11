@@ -24,6 +24,7 @@ from dg_pipeline.utils.model_pipeline import (
 )
 
 from dg_pipeline.utils.mlflow_log import log_model_training_run
+from dg_pipeline.utils.lakefs_config import get_lakefs_config, build_lakefs_metadata
 
 
 @multi_asset(
@@ -41,9 +42,6 @@ def baseline_train_test_data(
     aggregated_hourly_data: pd.DataFrame,
 ):
     """Create chronological train/test data for the baseline feature set."""
-
-    feature_config = FEATURE_SETS["baseline"]
-
     (
         X_train,
         X_test,
@@ -54,15 +52,13 @@ def baseline_train_test_data(
         test_data,
     ) = time_based_train_test_split(
         data=aggregated_hourly_data,
-        feature_config=feature_config,
-    )
+        feature_config=FEATURE_SETS["baseline"],
+    ) 
 
     context.add_output_metadata(
         {
             "feature_set": "baseline",
             "split_strategy": "chronological 80/20 split",
-            "target": feature_config["target"],
-            "feature_count": len(feature_config["features"]),
             "train_rows": len(X_train),
             "test_rows": len(X_test),
             "train_start": str(train_data["hour"].min()),
@@ -102,6 +98,7 @@ def baseline_model_predictions(
     """
 
     feature_config = FEATURE_SETS["baseline"]
+    split_strategy = "chronological"
     
     baseline_y_train_series = to_series(y_train_baseline)
     baseline_y_test_series = to_series(y_test_baseline)
@@ -122,6 +119,9 @@ def baseline_model_predictions(
         ),
     }
 
+    lakefs_config = get_lakefs_config()
+    lakefs_metadata = build_lakefs_metadata(lakefs_config)
+    
     outputs = {}
 
     for output_name, (model_name, pipeline_builder) in model_builders.items():
@@ -153,35 +153,29 @@ def baseline_model_predictions(
             test_rows=len(X_test_baseline),
             feature_count_before_encoding=len(feature_config["features"]),
             dataset=X_train_baseline,
+            lakefs_metadata=lakefs_metadata,
         )
 
-        predictions.attrs["mlflow_run_id"] = run_id
-        predictions.attrs["model_name"] = model_name
-        predictions.attrs["feature_set"] = "baseline"
+        predictions["run_id"] = run_id
+        predictions["model_name"] = model_name
+        predictions["feature_set"] = "baseline"
+        predictions["split_strategy"] = split_strategy
 
 
         context.add_output_metadata(
             {
                 "model": model_name,
-                "mlflow_run_id": run_id,
-                "feature_set": "baseline",
-                "feature_description": feature_config["description"],
-                "split_strategy": "chronological 80/20 split",
-                "target": feature_config["target"],
-                "feature_count_before_encoding": len(
-                    feature_config["features"]
-                ),
-                "numeric_feature_count": len(
-                    feature_config["numeric_features"]
-                ),
-                "categorical_feature_count": len(
-                    feature_config["categorical_features"]
-                ),
-                "train_rows": len(X_train_baseline),
-                "test_rows": len(X_test_baseline),
-                **evaluation_metrics,
-                "prediction_preview": MetadataValue.md(
-                    predictions.head().to_markdown()
+            "mlflow_run_id": run_id,
+            "feature_set": "baseline",
+            "target": feature_config["target"],
+            "feature_count_before_encoding": len(feature_config["features"]),
+            "numeric_feature_count": len(feature_config["numeric_features"]),
+            "categorical_feature_count": len(feature_config["categorical_features"]),
+            "train_rows": len(X_train_baseline),
+            "test_rows": len(X_test_baseline),
+            **evaluation_metrics,
+            "prediction_preview": MetadataValue.md(
+                predictions.head().to_markdown()
                 ),
             },
             output_name=output_name,
@@ -223,6 +217,7 @@ def baseline_model_comparison(
 
     best_model = comparison.iloc[0]["model"]
     best_rmse = comparison.iloc[0]["test_rmse"]
+    best_run_id = comparison.iloc[0]["run_id"]
 
     rmse_reduction_vs_linear_pct = (
         (baseline_rmse - best_rmse)
@@ -237,6 +232,7 @@ def baseline_model_comparison(
             "compared_model_count": len(comparison),
             "best_model": best_model,
             "best_test_rmse": float(best_rmse),
+            "best_run_id": best_run_id,
             "rmse_reduction_vs_linear_pct": float(
                 rmse_reduction_vs_linear_pct
             ),

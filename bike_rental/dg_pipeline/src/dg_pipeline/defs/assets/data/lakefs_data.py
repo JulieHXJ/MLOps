@@ -1,6 +1,7 @@
 import pandas as pd
 import pandas as pd
 from dagster import (
+    AssetKey,
     AssetCheckResult,
     AssetExecutionContext,
     MetadataValue,
@@ -9,10 +10,62 @@ from dagster import (
 )
 
 from dg_pipeline.utils.lakefs_config import get_lakefs_config
-from dg_pipeline.utils.lakefs_io import build_lakefs_uri, read_csv_from_lakefs
+from dg_pipeline.utils.lakefs_io import build_lakefs_uri, read_csv_from_lakefs, write_csv_to_lakefs
+
+from dagster import AssetExecutionContext, MetadataValue, asset
+import pandas as pd
 
 
 @asset(group_name="lakefs_data")
+def upload_engineered_model_data_to_lakefs(
+    context: AssetExecutionContext,
+    engineered_model_data: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Upload engineered model data to LakeFS so downstream assets can use
+    a versioned dataset source.
+    """
+
+    config = get_lakefs_config()
+    lakefs_uri = build_lakefs_uri(config)
+
+    write_csv_to_lakefs(
+        data=engineered_model_data,
+        config=config,
+    )
+
+    context.add_output_metadata(
+        {
+            "data_source": "dagster_engineered_model_data",
+            "lakefs_uri": lakefs_uri,
+            "lakefs_repo": config.repo,
+            "lakefs_branch": config.branch,
+            "lakefs_dataset_path": config.dataset_path,
+            "lakefs_commit_id": config.commit_id or "not_set",
+            "rows": len(engineered_model_data),
+            "columns": len(engineered_model_data.columns),
+            "preview": MetadataValue.md(
+                engineered_model_data.head().to_markdown()
+            ),
+        }
+    )
+
+    return pd.DataFrame(
+        [
+            {
+                "lakefs_uri": lakefs_uri,
+                "lakefs_repo": config.repo,
+                "lakefs_branch": config.branch,
+                "lakefs_dataset_path": config.dataset_path,
+                "lakefs_commit_id": config.commit_id or "not_set",
+                "rows": len(engineered_model_data),
+                "columns": len(engineered_model_data.columns),
+            }
+        ]
+    )
+
+
+@asset(group_name="lakefs_data", deps=[AssetKey("upload_engineered_model_data_to_lakefs")],)
 def lakefs_engineered_model_data(
     context: AssetExecutionContext,
 ) -> pd.DataFrame:
@@ -168,3 +221,5 @@ def lakefs_engineered_model_data_hour_parseable(
             "max_hour": str(parsed_hour.max()),
         },
     )
+
+

@@ -8,6 +8,7 @@ REQUIRED_PREDICTION_COLUMNS = [
     "hour",
     "actual_total_count",
     "predicted_total_count",
+    "run_id",
 ]
 
 
@@ -130,20 +131,29 @@ def summarize_test_predictions(model_name: str, predictions: pd.DataFrame) -> di
     y_true = predictions["actual_total_count"]
     y_pred = predictions["predicted_total_count"]
 
+    run_ids = predictions["run_id"].dropna().unique()
+    if len(run_ids) != 1:
+        raise ValueError(
+            f"Prediction table for '{model_name}' should contain exactly "
+            f"one unique run_id, but found: {run_ids}"
+        )
+    
+    split_strategies = predictions["split_strategy"].dropna().unique()
+
+    if len(split_strategies) != 1:
+        raise ValueError(
+            f"Prediction table for '{model_name}' should contain exactly "
+            f"one unique split_strategy, but found: {split_strategies}"
+        )
+
     return {
         "model": model_name,
-        "test_mae": float(
-            mean_absolute_error(y_true, y_pred)
-        ),
-        "test_rmse": float(
-            np.sqrt(mean_squared_error(y_true, y_pred))
-        ),
-        "test_r2": float(
-            r2_score(y_true, y_pred)
-        ),
-        "negative_predictions": int(
-            (y_pred < 0).sum()
-        ),
+        "test_mae": float(mean_absolute_error(y_true, y_pred)),
+        "test_rmse": float(np.sqrt(mean_squared_error(y_true, y_pred))),
+        "test_r2": float(r2_score(y_true, y_pred)),
+        "negative_predictions": int((y_pred < 0).sum()),
+        "run_id": str(run_ids[0]),
+        "split_strategy": str(split_strategies[0]),
     }
 
 

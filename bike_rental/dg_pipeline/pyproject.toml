@@ -12,6 +12,7 @@ dependencies = [
     "mlflow>=3.13.0",
     "pandas>=2.3.3",
     "python-dotenv>=1.2.2",
+    "requests>=2.34.2",
     "scikit-learn>=1.7.2",
     "uvicorn>=0.48.0",
     "xgboost>=3.2.0",

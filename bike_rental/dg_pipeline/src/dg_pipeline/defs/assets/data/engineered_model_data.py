@@ -8,6 +8,7 @@ from dg_pipeline.utils.data_engineering import (
     aggregate_city_hourly_demand,
     validate_hourly_feature_consistency,
     validate_data,
+    get_season,
 )
 
 
@@ -98,18 +99,6 @@ def aggregated_hourly_data(context: AssetExecutionContext, enriched_rental_data:
 
     return hourly_data
 
-
-def get_season(month: int) -> str:
-    """Convert month number into season label."""
-    if month in [12, 1, 2]:
-        return "winter"
-    if month in [3, 4, 5]:
-        return "spring"
-    if month in [6, 7, 8]:
-        return "summer"
-    return "autumn"
-
-
 def fill_missing_count(
     data: pd.DataFrame,
     count_columns: list[str],
@@ -135,6 +124,7 @@ def fill_missing_count(
         data[col] = data[col].fillna(data[col].mean())
 
     return data
+
 
 
 def create_engineered_features(model_ready_data: pd.DataFrame) -> pd.DataFrame:
@@ -314,9 +304,17 @@ def engineered_model_data(
     output_path = PROCESSED_DATA_DIR / "engineered_model_data.csv"
     engineered_data.to_csv(output_path, index=False)
 
+    historical_demand = engineered_data[["hour", "total_count"]].copy()
+
+    historical_demand_output_path = PROCESSED_DATA_DIR / "historical_demand.csv"
+    historical_demand.to_csv(historical_demand_output_path, index=False)
+
     context.add_output_metadata(
         {
             "output_path": MetadataValue.path(str(output_path.resolve())),
+            "historical_demand_output_path": MetadataValue.path(
+                str(historical_demand_output_path.resolve())
+            ),
             "input_rows": len(aggregated_hourly_data),
             "engineered_rows": len(engineered_data),
             "feature_count": len(features),

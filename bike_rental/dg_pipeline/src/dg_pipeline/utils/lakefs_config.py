@@ -2,6 +2,8 @@ import os
 from dataclasses import dataclass
 
 from dotenv import load_dotenv
+from lakefs_sdk import Configuration, ApiClient
+from lakefs_sdk.api.refs_api import RefsApi
 
 
 @dataclass(frozen=True)
@@ -13,6 +15,77 @@ class LakeFSConfig:
     branch: str
     dataset_path: str
     commit_id: str | None = None
+
+
+
+def get_latest_commit_id_from_lakefs_branch(
+    config: LakeFSConfig,
+) -> str:
+    """
+    Get the latest commit ID from a LakeFS branch.
+    """
+
+    lakefs_configuration = Configuration(
+        host=config.endpoint,
+        username=config.access_key_id,
+        password=config.secret_access_key,
+    )
+
+    with ApiClient(lakefs_configuration) as api_client:
+        refs_api = RefsApi(api_client)
+
+        commit_list = refs_api.log_commits(
+            repository=config.repo,
+            ref=config.branch,
+            amount=1,
+        )
+
+    if not commit_list.results:
+        raise ValueError(
+            f"No commits found in LakeFS repo='{config.repo}', "
+            f"branch='{config.branch}'."
+        )
+
+    return commit_list.results[0].id
+
+
+def resolve_lakefs_commit_id(
+    config: LakeFSConfig,
+) -> str:
+    """
+    Resolve the LakeFS commit ID.
+
+    Priority:
+    1. Use config.commit_id if it is explicitly provided.
+    2. Otherwise, fetch the latest commit ID from the configured branch.
+    """
+
+    if config.commit_id:
+        return config.commit_id
+
+    return get_latest_commit_id_from_lakefs_branch(config)
+
+def build_lakefs_metadata(
+    config: LakeFSConfig,
+) -> dict[str, str]:
+    """
+    Build LakeFS metadata for MLflow logging.
+    """
+
+    resolved_commit_id = resolve_lakefs_commit_id(config)
+
+    return {
+        "data_source": "lakefs",
+        "lakefs_repo": config.repo,
+        "lakefs_branch": config.branch,
+        "lakefs_commit_id": resolved_commit_id,
+        "lakefs_dataset_path": config.dataset_path,
+        "lakefs_uri": (
+            f"lakefs://{config.repo}/"
+            f"{resolved_commit_id}/"
+            f"{config.dataset_path}"
+        ),
+    }
 
 
 def get_lakefs_config() -> LakeFSConfig:
@@ -31,7 +104,7 @@ def get_lakefs_config() -> LakeFSConfig:
         "LAKEFS_DATASET_PATH",
         "data/processed/engineered_model_data.csv",
     )
-    commit_id = os.getenv("LAKEFS_COMMIT_ID")
+    commit_id = os.getenv("LAKEFS_COMMIT_ID") or None
 
     if not access_key_id or not secret_access_key:
         raise ValueError(

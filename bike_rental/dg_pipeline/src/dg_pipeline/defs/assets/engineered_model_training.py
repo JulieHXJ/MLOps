@@ -20,13 +20,12 @@ from dg_pipeline.utils.model_pipeline import (
     build_linear_regression_pipeline,
     build_random_forest_pipeline,
     build_xgboost_pipeline,
-    time_based_train_test_split,
+    train_test_split_by_strategy,
     to_series,
 )
 
 from dg_pipeline.utils.mlflow_log import log_model_training_run
-from dg_pipeline.utils.lakefs_config import get_lakefs_config
-from dg_pipeline.utils.lakefs_io import build_lakefs_uri
+from dg_pipeline.utils.lakefs_config import get_lakefs_config, build_lakefs_metadata
 
 
 @multi_asset(
@@ -44,9 +43,6 @@ def engineered_train_test_data(
     lakefs_engineered_model_data: pd.DataFrame,
 ):
     """Create chronological train/test data for the engineered feature set."""
-
-    feature_config = FEATURE_SETS["engineered"]
-
     (
         X_train,
         X_test,
@@ -55,17 +51,16 @@ def engineered_train_test_data(
         test_hours,
         train_data,
         test_data,
-    ) = time_based_train_test_split(
+    ) = train_test_split_by_strategy(
         data=lakefs_engineered_model_data,
-        feature_config=feature_config,
+        feature_config=FEATURE_SETS["engineered"],
+        split_strategy="chronological"
     )
 
     context.add_output_metadata(
         {
             "feature_set": "engineered",
             "split_strategy": "chronological 80/20 split",
-            "target": feature_config["target"],
-            "feature_count": len(feature_config["features"]),
             "train_rows": len(X_train),
             "test_rows": len(X_test),
             "train_start": str(train_data["hour"].min()),
@@ -104,6 +99,8 @@ def engineered_model_predictions(
     """
 
     feature_config = FEATURE_SETS["engineered"]
+    split_strategy = "chronological"
+    
 
     y_train_series = to_series(y_train_engineered)
     y_test_series = to_series(y_test_engineered)
@@ -127,17 +124,9 @@ def engineered_model_predictions(
             build_xgboost_pipeline,
         ),
     }
-
     lakefs_config = get_lakefs_config()
+    lakefs_metadata = build_lakefs_metadata(lakefs_config)
 
-    lakefs_metadata = {
-        "data_source": "lakefs",
-        "lakefs_repo": lakefs_config.repo,
-        "lakefs_branch": lakefs_config.branch,
-        "lakefs_commit_id": lakefs_config.commit_id or "not_set",
-        "lakefs_dataset_path": lakefs_config.dataset_path,
-        "lakefs_uri": build_lakefs_uri(lakefs_config),
-    }
 
     outputs = {}
 
@@ -172,11 +161,11 @@ def engineered_model_predictions(
             lakefs_metadata=lakefs_metadata,
         )
 
-        predictions.attrs["mlflow_run_id"] = run_id
-        predictions.attrs["model_name"] = model_name
-        predictions.attrs["feature_set"] = "engineered"
-    
-
+        # Store MLflow run_id as column
+        predictions["run_id"] = run_id
+        predictions["model_name"] = model_name
+        predictions["feature_set"] = "engineered"
+        predictions["split_strategy"] = split_strategy
 
         context.add_output_metadata(
             {
@@ -237,6 +226,10 @@ def engineered_model_comparison(
 
     best_model = comparison.iloc[0]["model"]
     best_rmse = comparison.iloc[0]["test_rmse"]
+    best_run_id = comparison.iloc[0]["run_id"] 
+
+
+
 
     context.add_output_metadata(
         {
@@ -245,6 +238,7 @@ def engineered_model_comparison(
             "compared_model_count": len(comparison),
             "best_model": best_model,
             "best_test_rmse": float(best_rmse),
+            "best_run_id": best_run_id,
             "comparison_preview": MetadataValue.md(
                 comparison.round(3).to_markdown(index=False)
             ),

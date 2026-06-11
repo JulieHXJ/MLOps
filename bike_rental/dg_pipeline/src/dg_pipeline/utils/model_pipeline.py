@@ -3,20 +3,62 @@ from sklearn.linear_model import LinearRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+from sklearn.model_selection import train_test_split
 
 from xgboost import XGBRegressor
+from dg_pipeline.utils.feature_config import FEATURE_SETS
 
 import pandas as pd
 
-# def random_train_test_split()
-    
+DEFAULT_SPLIT_RATIO = 0.8
+DEFAULT_RANDOM_STATE = 42
+
+def random_train_test_split(
+    data: pd.DataFrame,
+    feature_config: dict,
+):
+    """
+    Create a random train/test split from model-ready data.
+    """
+
+    data = data.copy()
+    data["hour"] = pd.to_datetime(data["hour"])
+    data = data.sort_values("hour").reset_index(drop=True)
+
+    features = feature_config["features"]
+    target = feature_config["target"]
+
+    train_data, test_data = train_test_split(
+        data,
+        train_size=0.8,
+        random_state=42,
+        shuffle=True,
+    )
+
+    train_data = train_data.sort_values("hour").reset_index(drop=True)
+    test_data = test_data.sort_values("hour").reset_index(drop=True)
+
+    X_train = train_data[features].reset_index(drop=True)
+    X_test = test_data[features].reset_index(drop=True)
+    y_train = train_data[target].reset_index(drop=True)
+    y_test = test_data[target].reset_index(drop=True)
+    test_hours = test_data["hour"].reset_index(drop=True)
+
+    return (
+        X_train,
+        X_test,
+        y_train,
+        y_test,
+        test_hours,
+        train_data,
+        test_data,
+    )
 
 
 
 def time_based_train_test_split(
     data: pd.DataFrame,
     feature_config: dict,
-    split_ratio: float = 0.8,
 ):
     """
     Create a chronological train/test split from model-ready data.
@@ -29,19 +71,57 @@ def time_based_train_test_split(
     features = feature_config["features"]
     target = feature_config["target"]
 
-    split_index = int(len(data) * split_ratio)
+    split_index = int(len(data) * 0.8)
 
     train_data = data.iloc[:split_index].copy()
     test_data = data.iloc[split_index:].copy()
 
-    X_train = train_data[features]
-    X_test = test_data[features]
-    y_train = train_data[target]
-    y_test = test_data[target]
-    test_hours = test_data["hour"]
+    X_train = train_data[features].reset_index(drop=True)
+    X_test = test_data[features].reset_index(drop=True)
+    y_train = train_data[target].reset_index(drop=True)
+    y_test = test_data[target].reset_index(drop=True)
+    test_hours = test_data["hour"].reset_index(drop=True)
 
-    return X_train, X_test, y_train, y_test, test_hours, train_data, test_data
+    return (
+        X_train,
+        X_test,
+        y_train,
+        y_test,
+        test_hours,
+        train_data.reset_index(drop=True),
+        test_data.reset_index(drop=True),
+    )
 
+
+def train_test_split_by_strategy(
+        data: pd.DataFrame,
+    feature_config: dict,
+    split_strategy: str = "chronological",
+):
+    """
+    Create train/test split based on the selected strategy.
+
+    Supported strategies:
+    - chronological
+    - random
+    """
+
+    if split_strategy == "chronological":
+        return time_based_train_test_split(
+            data=data,
+            feature_config=feature_config,
+        )
+
+    if split_strategy == "random":
+        return random_train_test_split(
+            data=data,
+            feature_config=feature_config,
+        )
+
+    raise ValueError(
+        f"Unknown split_strategy: {split_strategy}. "
+        "Expected 'chronological' or 'random'."
+    )
 
 
 
@@ -154,11 +234,6 @@ def to_series(data) -> pd.Series:
 
 
 
-
-
-# XGBoost
-
-
 XGBOOST_PARAMS = {
     "n_estimators": 300,
     "learning_rate": 0.05,
@@ -204,6 +279,5 @@ def build_tuned_xgboost_pipeline(
         numeric_features=numeric_features,
         categorical_features=categorical_features,
     )
-
 
 
