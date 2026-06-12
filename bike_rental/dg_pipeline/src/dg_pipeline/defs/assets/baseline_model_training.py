@@ -19,59 +19,58 @@ from dg_pipeline.utils.model_pipeline import (
     build_gradient_boosting_pipeline,
     build_linear_regression_pipeline,
     build_random_forest_pipeline,
-    time_based_train_test_split,
-    to_series,
+    train_test_split_by_strategy,
 )
 
 from dg_pipeline.utils.mlflow_log import log_model_training_run
 from dg_pipeline.utils.lakefs_config import get_lakefs_config, build_lakefs_metadata
 
 
-@multi_asset(
-    group_name="baseline_features",
-    outs={
-        "X_train_baseline": AssetOut(),
-        "X_test_baseline": AssetOut(),
-        "y_train_baseline": AssetOut(),
-        "y_test_baseline": AssetOut(),
-        "test_hours_baseline": AssetOut(),
-    },
-)
-def baseline_train_test_data(
-    context: AssetExecutionContext,
-    aggregated_hourly_data: pd.DataFrame,
-):
-    """Create chronological train/test data for the baseline feature set."""
-    (
-        X_train,
-        X_test,
-        y_train,
-        y_test,
-        test_hours,
-        train_data,
-        test_data,
-    ) = time_based_train_test_split(
-        data=aggregated_hourly_data,
-        feature_config=FEATURE_SETS["baseline"],
-    ) 
+# @multi_asset(
+#     group_name="baseline_features",
+#     outs={
+#         "X_train_baseline": AssetOut(),
+#         "X_test_baseline": AssetOut(),
+#         "y_train_baseline": AssetOut(),
+#         "y_test_baseline": AssetOut(),
+#         "test_hours_baseline": AssetOut(),
+#     },
+# )
+# def baseline_train_test_data(
+#     context: AssetExecutionContext,
+#     aggregated_hourly_data: pd.DataFrame,
+# ):
+#     """Create chronological train/test data for the baseline feature set."""
+#     (
+#         X_train,
+#         X_test,
+#         y_train,
+#         y_test,
+#         test_hours,
+#         train_data,
+#         test_data,
+#     ) = time_based_train_test_split(
+#         data=aggregated_hourly_data,
+#         feature_config=FEATURE_SETS["baseline"],
+#     ) 
 
-    context.add_output_metadata(
-        {
-            "feature_set": "baseline",
-            "split_strategy": "chronological 80/20 split",
-            "train_rows": len(X_train),
-            "test_rows": len(X_test),
-            "train_start": str(train_data["hour"].min()),
-            "train_end": str(train_data["hour"].max()),
-            "test_start": str(test_data["hour"].min()),
-            "test_end": str(test_data["hour"].max()),
-            "feature_preview": MetadataValue.md(
-                X_train.head().to_markdown()
-            ),
-        }, output_name="X_train_baseline",
-    )
+#     context.add_output_metadata(
+#         {
+#             "feature_set": "baseline",
+#             "split_strategy": "chronological 80/20 split",
+#             "train_rows": len(X_train),
+#             "test_rows": len(X_test),
+#             "train_start": str(train_data["hour"].min()),
+#             "train_end": str(train_data["hour"].max()),
+#             "test_start": str(test_data["hour"].min()),
+#             "test_end": str(test_data["hour"].max()),
+#             "feature_preview": MetadataValue.md(
+#                 X_train.head().to_markdown()
+#             ),
+#         }, output_name="X_train_baseline",
+#     )
 
-    return X_train, X_test, y_train, y_test, test_hours
+#     return X_train, X_test, y_train, y_test, test_hours
 
 
 
@@ -86,11 +85,7 @@ def baseline_train_test_data(
 )
 def baseline_model_predictions(
     context: AssetExecutionContext,
-    X_train_baseline: pd.DataFrame,
-    X_test_baseline: pd.DataFrame,
-    y_train_baseline,
-    y_test_baseline,
-    test_hours_baseline,
+    aggregated_hourly_data: pd.DataFrame,
 ):
     """
     Train all baseline model candidates on the same baseline train/test split
@@ -100,9 +95,21 @@ def baseline_model_predictions(
     feature_config = FEATURE_SETS["baseline"]
     split_strategy = "chronological"
     
-    baseline_y_train_series = to_series(y_train_baseline)
-    baseline_y_test_series = to_series(y_test_baseline)
-    baseline_test_hours_series = to_series(test_hours_baseline)
+    train_data_baseline, test_data_baseline = train_test_split_by_strategy(
+        data=aggregated_hourly_data,
+        split_strategy=split_strategy,
+    )
+    
+    features = feature_config["features"]
+    target = feature_config["target"]
+
+    X_train_baseline = train_data_baseline[features]
+    X_test_baseline = test_data_baseline[features]
+    y_train_series = train_data_baseline[target]
+    y_test_series = test_data_baseline[target]
+    test_hours_series = test_data_baseline["hour"]
+
+
 
     model_builders = {
         "linear_regression_predictions_baseline": (
@@ -130,16 +137,16 @@ def baseline_model_predictions(
             categorical_features=feature_config["categorical_features"],
         )
 
-        pipeline.fit(X_train_baseline, baseline_y_train_series)
+        pipeline.fit(X_train_baseline, y_train_series)
 
         evaluation_metrics, predictions = evaluate_regressor(
             model_name=model_name,
             fitted_model=pipeline,
             X_train=X_train_baseline,
             X_test=X_test_baseline,
-            y_train=baseline_y_train_series,
-            y_test=baseline_y_test_series,
-            test_hours=baseline_test_hours_series,
+            y_train=y_train_series,
+            y_test=y_test_series,
+            test_hours=test_hours_series,
         )
 
         # mlflow log

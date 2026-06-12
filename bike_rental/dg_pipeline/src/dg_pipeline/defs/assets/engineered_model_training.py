@@ -21,60 +21,59 @@ from dg_pipeline.utils.model_pipeline import (
     build_random_forest_pipeline,
     build_xgboost_pipeline,
     train_test_split_by_strategy,
-    to_series,
 )
 
 from dg_pipeline.utils.mlflow_log import log_model_training_run
 from dg_pipeline.utils.lakefs_config import get_lakefs_config, build_lakefs_metadata
 
 
-@multi_asset(
-    group_name="engineered_features",
-    outs={
-        "X_train_engineered": AssetOut(),
-        "X_test_engineered": AssetOut(),
-        "y_train_engineered": AssetOut(),
-        "y_test_engineered": AssetOut(),
-        "test_hours_engineered": AssetOut(),
-    },
-)
-def engineered_train_test_data(
-    context: AssetExecutionContext,
-    lakefs_engineered_model_data: pd.DataFrame,
-):
-    """Create chronological train/test data for the engineered feature set."""
-    (
-        X_train,
-        X_test,
-        y_train,
-        y_test,
-        test_hours,
-        train_data,
-        test_data,
-    ) = train_test_split_by_strategy(
-        data=lakefs_engineered_model_data,
-        feature_config=FEATURE_SETS["engineered"],
-        split_strategy="chronological"
-    )
+# @multi_asset(
+#     group_name="engineered_features",
+#     outs={
+#         "X_train_engineered": AssetOut(),
+#         "X_test_engineered": AssetOut(),
+#         "y_train_engineered": AssetOut(),
+#         "y_test_engineered": AssetOut(),
+#         "test_hours_engineered": AssetOut(),
+#     },
+# )
+# def engineered_train_test_data(
+#     context: AssetExecutionContext,
+#     lakefs_engineered_model_data: pd.DataFrame,
+# ):
+#     """Create chronological train/test data for the engineered feature set."""
+#     (
+#         X_train,
+#         X_test,
+#         y_train,
+#         y_test,
+#         test_hours,
+#         train_data,
+#         test_data,
+#     ) = train_test_split_by_strategy(
+#         data=lakefs_engineered_model_data,
+#         feature_config=FEATURE_SETS["engineered"],
+#         split_strategy="chronological"
+#     )
 
-    context.add_output_metadata(
-        {
-            "feature_set": "engineered",
-            "split_strategy": "chronological 80/20 split",
-            "train_rows": len(X_train),
-            "test_rows": len(X_test),
-            "train_start": str(train_data["hour"].min()),
-            "train_end": str(train_data["hour"].max()),
-            "test_start": str(test_data["hour"].min()),
-            "test_end": str(test_data["hour"].max()),
-            "feature_preview": MetadataValue.md(
-                X_train.head().to_markdown()
-            ),
-        },
-        output_name="X_train_engineered",
-    )
+#     context.add_output_metadata(
+#         {
+#             "feature_set": "engineered",
+#             "split_strategy": "chronological 80/20 split",
+#             "train_rows": len(X_train),
+#             "test_rows": len(X_test),
+#             "train_start": str(train_data["hour"].min()),
+#             "train_end": str(train_data["hour"].max()),
+#             "test_start": str(test_data["hour"].min()),
+#             "test_end": str(test_data["hour"].max()),
+#             "feature_preview": MetadataValue.md(
+#                 X_train.head().to_markdown()
+#             ),
+#         },
+#         output_name="X_train_engineered",
+#     )
 
-    return X_train, X_test, y_train, y_test, test_hours
+#     return X_train, X_test, y_train, y_test, test_hours
 
 
 @multi_asset(
@@ -88,11 +87,7 @@ def engineered_train_test_data(
 )
 def engineered_model_predictions(
     context: AssetExecutionContext,
-    X_train_engineered: pd.DataFrame,
-    X_test_engineered: pd.DataFrame,
-    y_train_engineered,
-    y_test_engineered,
-    test_hours_engineered,
+    lakefs_engineered_model_data: pd.DataFrame,
 ):
     """
     Train all model candidates on the engineered feature set.
@@ -100,11 +95,20 @@ def engineered_model_predictions(
 
     feature_config = FEATURE_SETS["engineered"]
     split_strategy = "chronological"
-    
 
-    y_train_series = to_series(y_train_engineered)
-    y_test_series = to_series(y_test_engineered)
-    test_hours_series = to_series(test_hours_engineered)
+    train_data_engineered, test_data_engineered = train_test_split_by_strategy(
+        data=lakefs_engineered_model_data,
+        split_strategy=split_strategy,
+    )
+    
+    features = feature_config["features"]
+    target = feature_config["target"]
+
+    X_train_engineered = train_data_engineered[features]
+    X_test_engineered = test_data_engineered[features]
+    y_train_series = train_data_engineered[target]
+    y_test_series = test_data_engineered[target]
+    test_hours_series = test_data_engineered["hour"]
 
     model_builders = {
         "linear_regression_predictions_engineered": (

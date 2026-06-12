@@ -15,7 +15,6 @@ from dg_pipeline.utils.evaluation import (
 
 from dg_pipeline.utils.model_pipeline import (
     build_tuned_xgboost_pipeline,
-    to_series,
 )
 
 from dg_pipeline.utils.mlflow_log import log_model_training_run

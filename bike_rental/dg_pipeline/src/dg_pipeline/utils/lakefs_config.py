@@ -49,21 +49,21 @@ def get_latest_commit_id_from_lakefs_branch(
     return commit_list.results[0].id
 
 
-def resolve_lakefs_commit_id(
-    config: LakeFSConfig,
-) -> str:
-    """
-    Resolve the LakeFS commit ID.
+# def resolve_lakefs_commit_id(
+#     config: LakeFSConfig,
+# ) -> str:
+#     """
+#     Resolve the LakeFS commit ID.
 
-    Priority:
-    1. Use config.commit_id if it is explicitly provided.
-    2. Otherwise, fetch the latest commit ID from the configured branch.
-    """
+#     Priority:
+#     1. Use config.commit_id if it is explicitly provided.
+#     2. Otherwise, fetch the latest commit ID from the configured branch.
+#     """
 
-    if config.commit_id:
-        return config.commit_id
+#     if config.commit_id:
+#         return config.commit_id
 
-    return get_latest_commit_id_from_lakefs_branch(config)
+#     return get_latest_commit_id_from_lakefs_branch(config)
 
 def build_lakefs_metadata(
     config: LakeFSConfig,
@@ -72,19 +72,25 @@ def build_lakefs_metadata(
     Build LakeFS metadata for MLflow logging.
     """
 
-    resolved_commit_id = resolve_lakefs_commit_id(config)
+    lakefs_ref = config.commit_id or config.branch
 
-    return {
+    metadata = {
         "data_source": "lakefs",
         "lakefs_repo": config.repo,
         "lakefs_branch": config.branch,
-        "lakefs_commit_id": resolved_commit_id,
+        "lakefs_ref": lakefs_ref,
         "lakefs_dataset_path": config.dataset_path,
         "lakefs_uri": (
             f"lakefs://{config.repo}/"
-            f"{resolved_commit_id}/"
+            f"{lakefs_ref}/"
             f"{config.dataset_path}"
         ),
+    }
+
+    return {
+        key: str(value)
+        for key, value in metadata.items()
+        if value is not None and value != ""
     }
 
 

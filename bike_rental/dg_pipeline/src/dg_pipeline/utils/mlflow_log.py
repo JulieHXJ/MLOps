@@ -65,10 +65,10 @@ def log_model_training_run(
         mlflow.log_param("model_stage", model_stage)
         mlflow.log_param("model_type", type(final_estimator).__name__)
 
-        if lakefs_metadata is not None:
+        if lakefs_metadata:
             for key, value in lakefs_metadata.items():
-                mlflow.log_param(key, value)
-
+                if value is not None and value != "":
+                    mlflow.log_param(key, str(value))
 
         mlflow.log_param("train_rows", train_rows)
         mlflow.log_param("test_rows", test_rows)
@@ -77,7 +77,14 @@ def log_model_training_run(
             feature_count_before_encoding,
         )
 
-        mlflow.log_params(final_estimator.get_params())
+        # Log model hyperparameters safely
+        model_params = final_estimator.get_params()
+        safe_model_params = {
+            key: str(value)
+            for key, value in model_params.items()
+            if value is not None
+        }
+        mlflow.log_params(safe_model_params)
 
         mlflow.log_metrics(metrics)
 

@@ -61,7 +61,7 @@ def registered_production_model(context: AssetExecutionContext, engineered_model
 
     client = MlflowClient()
     client.set_registered_model_alias(
-        name="BikeRentalDemandModel",
+        name=registered_model_name,
         alias=production_alias,
         version=model_version.version,
     )

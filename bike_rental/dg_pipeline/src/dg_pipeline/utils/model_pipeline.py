@@ -15,8 +15,7 @@ DEFAULT_RANDOM_STATE = 42
 
 def random_train_test_split(
     data: pd.DataFrame,
-    feature_config: dict,
-):
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Create a random train/test split from model-ready data.
     """
@@ -25,41 +24,23 @@ def random_train_test_split(
     data["hour"] = pd.to_datetime(data["hour"])
     data = data.sort_values("hour").reset_index(drop=True)
 
-    features = feature_config["features"]
-    target = feature_config["target"]
-
     train_data, test_data = train_test_split(
         data,
-        train_size=0.8,
-        random_state=42,
+        train_size=DEFAULT_SPLIT_RATIO,
+        random_state=DEFAULT_RANDOM_STATE,
         shuffle=True,
     )
 
     train_data = train_data.sort_values("hour").reset_index(drop=True)
     test_data = test_data.sort_values("hour").reset_index(drop=True)
 
-    X_train = train_data[features].reset_index(drop=True)
-    X_test = test_data[features].reset_index(drop=True)
-    y_train = train_data[target].reset_index(drop=True)
-    y_test = test_data[target].reset_index(drop=True)
-    test_hours = test_data["hour"].reset_index(drop=True)
-
-    return (
-        X_train,
-        X_test,
-        y_train,
-        y_test,
-        test_hours,
-        train_data,
-        test_data,
-    )
+    return train_data, test_data
 
 
 
 def time_based_train_test_split(
     data: pd.DataFrame,
-    feature_config: dict,
-):
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Create a chronological train/test split from model-ready data.
     """
@@ -68,29 +49,13 @@ def time_based_train_test_split(
     data["hour"] = pd.to_datetime(data["hour"])
     data = data.sort_values("hour").reset_index(drop=True)
 
-    features = feature_config["features"]
-    target = feature_config["target"]
+    split_index = int(len(data) * DEFAULT_SPLIT_RATIO)
 
-    split_index = int(len(data) * 0.8)
+    train_data = data.iloc[:split_index].copy().reset_index(drop=True)
+    test_data = data.iloc[split_index:].copy().reset_index(drop=True)
 
-    train_data = data.iloc[:split_index].copy()
-    test_data = data.iloc[split_index:].copy()
+    return train_data, test_data
 
-    X_train = train_data[features].reset_index(drop=True)
-    X_test = test_data[features].reset_index(drop=True)
-    y_train = train_data[target].reset_index(drop=True)
-    y_test = test_data[target].reset_index(drop=True)
-    test_hours = test_data["hour"].reset_index(drop=True)
-
-    return (
-        X_train,
-        X_test,
-        y_train,
-        y_test,
-        test_hours,
-        train_data.reset_index(drop=True),
-        test_data.reset_index(drop=True),
-    )
 
 
 def train_test_split_by_strategy(
@@ -109,13 +74,11 @@ def train_test_split_by_strategy(
     if split_strategy == "chronological":
         return time_based_train_test_split(
             data=data,
-            feature_config=feature_config,
         )
 
     if split_strategy == "random":
         return random_train_test_split(
             data=data,
-            feature_config=feature_config,
         )
 
     raise ValueError(
@@ -217,20 +180,20 @@ def build_gradient_boosting_pipeline(
 
 
 
-def to_series(data) -> pd.Series:
-    """Convert a one-column DataFrame or Series to Series."""
-    if isinstance(data, pd.Series):
-        return data
+# def to_series(data) -> pd.Series:
+#     """Convert a one-column DataFrame or Series to Series."""
+#     if isinstance(data, pd.Series):
+#         return data
 
-    if isinstance(data, pd.DataFrame):
-        if data.shape[1] != 1:
-            raise ValueError(
-                "Expected a one-column DataFrame when converting to Series, "
-                f"but got {data.shape[1]} columns."
-            )
-        return data.iloc[:, 0]
+#     if isinstance(data, pd.DataFrame):
+#         if data.shape[1] != 1:
+#             raise ValueError(
+#                 "Expected a one-column DataFrame when converting to Series, "
+#                 f"but got {data.shape[1]} columns."
+#             )
+#         return data.iloc[:, 0]
 
-    raise TypeError(f"Expected Series or DataFrame, got {type(data)}.")
+#     raise TypeError(f"Expected Series or DataFrame, got {type(data)}.")
 
 
 
